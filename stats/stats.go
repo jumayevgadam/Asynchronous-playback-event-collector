@@ -1,6 +1,6 @@
 package stats
 
 type Stats struct {
-	TotalEvents     int64
+	TotalEvents     uint64
 	ProcessedPerSec float64
 }
