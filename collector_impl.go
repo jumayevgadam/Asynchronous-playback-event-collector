@@ -10,16 +10,22 @@ import (
 	"time"
 )
 
+const (
+	fullProgressPercent = 100 // 100% progress updates completion.
+	maxProgressChan     = 100 // Buffer size of progress channel.
+)
+
 func init() {
 	CurrentCollector = newCollectorImpl()
 }
 
 // collectorImpl manages event processing, enrichment and stats tracking.
 type collectorImpl struct {
-	enrichClient EnrichClient // for fetching region and model data.
-	totalEvents  uint64       // for tracking the total number of events processed.
-	startTime    time.Time    // for calculate ProcessedPerSec.
-	mu           sync.Mutex   // for protect shared state.
+	enrichClient     EnrichClient // for fetching region and model data.
+	totalEvents      uint64       // for tracking the total number of events processed.
+	startTime        time.Time    // for calculate ProcessedPerSec.
+	mu               sync.Mutex   // for protect shared state.
+	enrichClientOnce sync.Once    // for ensuring enrichClient is set only once.
 }
 
 // newCollectorImpl creates a new collectorImpl with initialized start time.
@@ -39,11 +45,34 @@ type operationImpl struct {
 	mu           sync.Mutex       // protects specific operation state.
 }
 
-// WithEnrichClient sets the EnrichClient and returns the collector.
+// newOperation creates a new operationImpl.
+func newOperationImpl(totalEvents int) *operationImpl {
+	op := &operationImpl{
+		progressChan: make(chan uint8, maxProgressChan),
+		doneChan:     make(chan struct{}),
+		result: &OperationResult{
+			HandledEvents: 0,
+			Elapsed:       0,
+		},
+		startTime: time.Now(),
+	}
+	// handle empty events case.
+	if totalEvents == 0 {
+		op.progressChan <- fullProgressPercent
+		close(op.progressChan)
+		close(op.doneChan)
+	}
+
+	return op
+}
+
+// WithEnrichClient sets the EnrichClient only once and returns the collector.
 func (c *collectorImpl) WithEnrichClient(client EnrichClient) EventCollector {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.enrichClient = client
+	c.enrichClientOnce.Do(func() {
+		c.mu.Lock()         // we need to take guarantee the client is set
+		defer c.mu.Unlock() // exactly once even if called multiple goroutines.
+		c.enrichClient = client
+	})
 
 	return c
 }
@@ -53,22 +82,8 @@ func (c *collectorImpl) Handle(events []*model.PlaybackEvent) (Operation, error)
 		return nil, fmt.Errorf("enrich client not set")
 	}
 	// initialize the operation to track progress and results.
-	op := &operationImpl{
-		progressChan: make(chan uint8, 100),
-		doneChan:     make(chan struct{}),
-		result: &OperationResult{
-			HandledEvents: 0,
-			Elapsed:       0,
-		},
-		startTime: time.Now(),
-	}
-	// if no events to process, report 100% progress and finish immediately.
-	totalEvents := len(events)
-	if totalEvents == 0 {
-		op.progressChan <- 100
-		close(op.progressChan)
-		close(op.doneChan)
-
+	op := newOperationImpl(len(events))
+	if len(events) == 0 {
 		return op, nil
 	}
 
@@ -91,8 +106,8 @@ func (c *collectorImpl) Handle(events []*model.PlaybackEvent) (Operation, error)
 				}
 
 				// Enrich event with model data.
-				if model, _, err := c.enrichClient.GetModel(ctx, e.DeviceType); err == nil {
-					e.Model = model
+				if deviceModel, _, err := c.enrichClient.GetModel(ctx, e.DeviceType); err == nil {
+					e.Model = deviceModel // fixed name.
 				}
 
 				// Safely update counters.
@@ -105,7 +120,7 @@ func (c *collectorImpl) Handle(events []*model.PlaybackEvent) (Operation, error)
 				op.mu.Unlock()
 
 				// calculate and send progress percentage.
-				progress := uint8((float64(newProcessed) / float64(totalEvents)) * 100)
+				progress := uint8((float64(newProcessed) / float64(len(events))) * float64(fullProgressPercent))
 				select {
 				case op.progressChan <- progress:
 				default:
@@ -115,9 +130,9 @@ func (c *collectorImpl) Handle(events []*model.PlaybackEvent) (Operation, error)
 
 		wg.Wait()
 
-		// ensure final progress is marked as 100%.
+		// ensure final fullProgressPercent is marked as 100%.
 		select {
-		case op.progressChan <- 100:
+		case op.progressChan <- fullProgressPercent:
 		default:
 		}
 
