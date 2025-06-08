@@ -38,8 +38,8 @@ func (s *simpleTestClient) GetModel(ctx context.Context, deviceType string) (mod
 func generateEvents(tb testing.TB) []*model.PlaybackEvent {
 	const generateEventsNum = 10
 	out := make([]*model.PlaybackEvent, generateEventsNum)
-	for i := range generateEventsNum {
 
+	for i := range generateEventsNum {
 		event := model.PlaybackEvent{
 			ID:          1,
 			UserID:      fmt.Sprintf("u_%d", i),
