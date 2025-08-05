@@ -1,14 +1,11 @@
 # Asynchronous Playback Event Collector
 
 ## Introduction
-
-You manage the event processing department at Belet and are responsible for processing playback events that come from users. You regularly receive a batch of events that have pre-filled information about the playback event.
-
-You decide to automate and optimize the event processing process to improve playback performance.
+We need to manage the event processing department at Belet and are responsible for processing playback events that come from users. You regularly receive a batch of events that have pre-filled information about the playback event.
 
 ## Task
 
-You need to write an implementation of the `EventCollector` interface. This interface can be found in the `collector.go` file. The service must process the events passed to the `Handle(...)` method and return an operation that is responsible for the progress of this processing.
+We need to write an implementation of the `EventCollector` interface. This interface can be found in the `collector.go` file. The service must process the events passed to the `Handle(...)` method and return an operation that is responsible for the progress of this processing.
 
 Each event contains incomplete information upon receipt: it does not contain the user's region and device model. Before processing this event, this information must be completed. You can get the information in a separate service.
 
@@ -71,16 +68,7 @@ There is no need to implement the `EnrichClient` interface yourself.
 
 ## 🧹 Code Quality
 
-Please **install and run a linter** on your code before submission.
-
-We recommend using [`golangci-lint`](https://golangci-lint.run/welcome/install/) (a popular all-in-one Go linter).
-
 ### Run
 ```bash
    golangci-lint run ./...
 ```
-
-Make sure your code is free of linting errors and warnings before submitting.
-
----
-Good luck 🚀
